@@ -1,0 +1,839 @@
+---
+title: "Kidney Model for Adult & Pediatric"
+author: "KidneyA11"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+# load library
+#aBiocManager::install("preprocessCore")
+library(GEOquery)
+library(dplyr)
+library(tidyverse)
+library(limma)
+library(reshape2)
+library(DT)
+library(stringr)
+library(preprocessCore)
+library(sva)
+library(cvTools)      # Cross-validation
+library(e1071)        # Support vector machines, Naive Bayes
+library(randomForest) # Random forests
+library(viridis)      # Viridis colour scheme
+library(plotly)       # Interactive plots
+```
+
+# Load Datasets
+```{r warning=FALSE}
+# load datasets 
+
+# "Adult" for Adult
+gseAdultA <- getGEO("GSE46474")
+gseAdultA_raw <- gseAdultA[[1]] # Extract the expression data
+
+gseAdultB <- getGEO("GSE1563")
+gseAdultB_raw <- gseAdultB[[1]] # Extract the expression data
+
+gseAdultC <- getGEO("GSE14328")
+gseAdultC_raw <- gseAdultC[[1]] # Extract the expression data
+
+# "P" for Pediatric
+
+gsePA <- getGEO("GSE20300")
+gsePA_raw <- gsePA[[1]] # Extract the expression data
+
+gsePB <- getGEO("GSE174020")
+gsePB_raw <- gsePB[[1]] # Extract the expression data
+
+gsePC <- getGEO("GSE75693")
+gsePC_raw <- gsePC[[1]] # Extract the expression data
+
+# save(gseAdultA, file="gseAdultA.RData")
+# save(gseAdultB, file="gseAdultB.RData")
+# save(gseAdultC, file="gseAdultC.RData")
+# save(gsePA, file="gsePA.RData")
+# save(gsePB, file="gsePB.RData")
+# save(gsePC, file="gsePC.RData")
+```
+
+# Adult Datasets
+
+## Adult: A. GSE46474
+
+### Basic statistics
+
+```{r}
+#pData(gseAdultA_raw)
+#colnames(pData(gseAdultA_raw))
+gseAdultA_raw$Outcome <- ifelse(grepl("AR", pData(gseAdultA_raw)$characteristics_ch1.5), "Rejection", "Stable") #Tidy the title variable and call it Outcome
+table(gseAdultA_raw$Outcome)
+dim(gseAdultA_raw)
+```
+
+### Cleaning
+
+```{r}
+# preprocessing
+fDataAdultA_raw <- fData(gseAdultA_raw) # Extract the gene information
+#colnames(fDataAdultA_raw)
+#head(fDataAdultA_raw[,"Gene Symbol"])
+
+design_AdultA <- model.matrix(~Outcome, data = pData(gseAdultA_raw))
+fit_AdultA <- lmFit(exprs(gseAdultA_raw), design_AdultA)
+fit_AdultA <- eBayes(fit_AdultA)
+
+fit_good_rows_A <- suppressMessages(topTable(fit_AdultA, genelist = fDataAdultA_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gseAdultA <- gseAdultA_raw[fit_good_rows_A]
+```
+
+
+### Normalization
+
+```{r}
+eMatA <- exprs(gseAdultA)
+#summary(eMatA)
+summary(eMatA[,1])
+```
+This suggests that the data may has been normalised. 
+
+```{r}
+# log2 transform - normalisation
+
+#Check if it is normalised(may not be needed)
+ qx <- as.numeric(quantile(eMatA, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+ LogC <- (qx[5] > 100) ||
+           (qx[6]-qx[1] > 50 && qx[2] > 0)
+ if (LogC) { eMatA[which(eMatA <= 0)] <- NaN
+   eMatA <- log2(eMatA) }
+
+summary(eMatA[,1])
+```
+
+### Boxplot
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(melt(exprs(gseAdultA_raw)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+
+## Adult: B. GSE1563
+
+### Basic statistics
+
+```{r}
+#pData(gseAdultB_raw)
+#colnames(pData(gseAdultB_raw))
+gseAdultB_raw$Outcome <- ifelse(grepl("acute rejection", pData(gseAdultB_raw)$description), "Rejection", "Stable") #Tidy the title variable and call it Outcome
+table(gseAdultB_raw$Outcome)
+dim(gseAdultB_raw)
+```
+
+### Cleaning
+
+```{r}
+# preprocessing
+fDataAdultB_raw <- fData(gseAdultB_raw) # Extract the gene information
+colnames(fDataAdultB_raw)
+head(fDataAdultB_raw[,"Gene Symbol"])
+
+design_AdultB <- model.matrix(~Outcome, data = pData(gseAdultB_raw))
+fit_AdultB <- lmFit(exprs(gseAdultB_raw), design_AdultB)
+fit_AdultB <- eBayes(fit_AdultB)
+
+fit_good_rows_B <- suppressMessages(topTable(fit_AdultB, genelist = fDataAdultB_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gseAdultB <- gseAdultB_raw[fit_good_rows_B]
+```
+
+### Normalization
+
+```{r}
+eMatB <- exprs(gseAdultB)
+summary(eMatB[,1])
+```
+This suggests that we need to normalise the data.
+
+```{r}
+# log2 transform - normalisation
+
+#Check if it is normalised(may not be needed)
+ qx <- as.numeric(quantile(eMatB, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+ LogC <- (qx[5] > 100) ||
+           (qx[6]-qx[1] > 50 && qx[2] > 0)
+ if (LogC) { eMatB[which(eMatB <= 0)] <- NaN
+   eMatB <- log2(eMatB) }
+
+summary(eMatB[,1])
+```
+
+### Boxplot 
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(na.omit(melt(eMatB)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+
+## Adult: C. GSE131179
+
+### Basic statistics
+
+```{r}
+#pData(gseAdultC_raw)
+#colnames(pData(gseAdultC_raw))
+gseAdultC_raw$Outcome <- ifelse(grepl("acute rejection", pData(gseAdultC_raw)$characteristics_ch1), "Rejection", "Stable") #Tidy the title variable and call it Outcome
+table(gseAdultC_raw$Outcome)
+dim(gseAdultC_raw)
+```
+
+### Cleaning
+
+```{r}
+# preprocessing
+fData(gseAdultC_raw)
+fDataAdultC_raw <- fData(gseAdultC_raw) # Extract the gene information
+colnames(fDataAdultC_raw)
+head(fDataAdultC_raw[,"Gene Symbol"])
+
+design_AdultC <- model.matrix(~Outcome, data = pData(gseAdultC_raw))
+fit_AdultC <- lmFit(exprs(gseAdultC_raw), design_AdultC)
+fit_AdultC <- eBayes(fit_AdultC)
+
+fit_good_rows_C <- suppressMessages(topTable(fit_AdultC, genelist = fDataAdultC_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gseAdultC <- gseAdultC_raw[fit_good_rows_C]
+```
+
+### Normalization
+
+```{r}
+eMatC <- exprs(gseAdultC)
+summary(eMatC[,1])
+```
+This suggests that the data may has been normalised. So we need to normalise the data.
+
+```{r}
+# log2 transform - normalisation
+
+#Check if it is normalised(may not be needed)
+ qx <- as.numeric(quantile(eMatC, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+ LogC <- (qx[5] > 100) ||
+           (qx[6]-qx[1] > 50 && qx[2] > 0)
+ if (LogC) { eMatC[which(eMatC <= 0)] <- NaN
+   eMatC <- log2(eMatC) }
+
+summary(eMatC[,1])
+```
+
+### Boxplot 
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(na.omit(melt(eMatC)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+# Pediatric Datasets
+
+## Pediatric: A. GSE20300
+
+### Basic statistics
+
+```{r}
+#pData(gsePA_raw)
+#colnames(pData(gsePA_raw))
+gsePA_raw$Outcome <- ifelse(grepl("Stable", pData(gsePA_raw)$characteristics_ch1), "Stable", "Rejection") #Tidy the title variable and call it Outcome
+table(gsePA_raw$Outcome)
+dim(gsePA_raw)
+```
+
+### Cleaning
+
+```{r warning=FALSE}
+# preprocessing
+fDataPA_raw <- fData(gsePA_raw) # Extract the gene information
+#colnames(fDataPA_raw)
+#head(fDataPA_raw[,"Gene Symbol"])
+
+design_PA <- model.matrix(~Outcome, data = pData(gsePA_raw))
+fit_PA <- lmFit(exprs(gsePA_raw), design_PA)
+fit_PA <- eBayes(fit_PA)
+
+fit_good_rows_PA <- suppressMessages(topTable(fit_PA, genelist = fDataPA_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gsePA <- gsePA_raw[fit_good_rows_PA]
+```
+
+
+### Normalization
+
+```{r}
+eMatPA <- exprs(gsePA)
+#summary(eMatPA)
+summary(eMatPA[,1])
+```
+This suggests that the data may has been normalised. 
+
+### Boxplot
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(melt(exprs(gsePA_raw)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+
+## Pediatric: B. GSE174020
+
+### Basic statistics
+
+```{r}
+#pData(gsePB_raw)
+#colnames(pData(gsePB_raw))
+gsePB_raw$Outcome <- ifelse(grepl("AR", pData(gsePB_raw)$characteristics_ch1.1), "Rejection", "Stable") #Tidy the title variable and call it Outcome
+table(gsePB_raw$Outcome)
+dim(gsePB_raw)
+```
+
+### Cleaning
+
+```{r warning=FALSE}
+# preprocessing
+fDataPB_raw <- fData(gsePB_raw) # Extract the gene information
+#colnames(fDataPB_raw)
+#head(fDataPB_raw[,"Gene Symbol"])
+
+design_PB <- model.matrix(~Outcome, data = pData(gsePB_raw))
+fit_PB <- lmFit(exprs(gsePB_raw), design_PB)
+fit_PB <- eBayes(fit_PB)
+
+fit_good_rows_PB <- suppressMessages(topTable(fit_PB, genelist = fDataPB_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gsePB <- gsePB_raw[fit_good_rows_PB]
+```
+
+
+### Normalization
+
+```{r}
+eMatPB <- exprs(gsePB)
+#summary(eMatPB)
+summary(eMatPB[,1])
+```
+This suggests that the data may has been normalised. 
+
+### Boxplot
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(melt(exprs(gsePB_raw)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+
+## Pediatric: C. GSE75693
+
+### Basic statistics
+
+```{r}
+pData(gsePC_raw)
+#colnames(pData(gsePC_raw))
+gsePC_raw$Outcome <- ifelse(grepl("Acute rejection", pData(gsePC_raw)$characteristics_ch1.1), "Rejection", "Stable") #Tidy the title variable and call it Outcome
+table(gsePC_raw$Outcome)
+dim(gsePC_raw)
+```
+
+### Cleaning
+
+```{r warning=FALSE}
+# preprocessing
+fDataPC_raw <- fData(gsePC_raw) # Extract the gene information
+#colnames(fDataPC_raw)
+#head(fDataPC_raw[,"Gene Symbol"])
+
+design_PC <- model.matrix(~Outcome, data = pData(gsePC_raw))
+fit_PC <- lmFit(exprs(gsePC_raw), design_PC)
+fit_PC <- eBayes(fit_PC)
+
+fit_good_rows_PC <- suppressMessages(topTable(fit_PC, genelist = fDataPC_raw[, "Gene Symbol"], n = Inf)) %>%
+  rownames_to_column("row") %>%
+  filter(!is.na(ID)) %>%
+  filter(ID != "") %>%
+  group_by(ID) %>%
+  filter(P.Value == min(P.Value)) %>%
+  pull(row)
+gsePC <- gsePC_raw[fit_good_rows_PC]
+```
+
+
+### Normalization
+
+```{r}
+eMatPC <- exprs(gsePC)
+#summary(eMatPC)
+summary(eMatPC[,1])
+```
+This suggests that the data may has been normalised. 
+
+### Boxplot
+
+```{r}
+## base R code is
+## boxplot(eMat) or boxplot(melt(exprs(gse)))
+p <- ggplot(melt(exprs(gsePC_raw)), aes(x=Var2, y=value)) +  
+  geom_boxplot(outlier.colour="black", outlier.shape=16,outlier.size=0.5, notch=FALSE) +
+  theme(axis.text.x = element_text(angle = 180, hjust = 1)) +
+  labs (x = "patient", y = "expression value") + theme_minimal()
+p
+```
+
+
+# Merging
+
+## Adult
+
+```{r}
+# changing row names to gene symbol
+rownames(eMatA) <- make.unique(fData(gseAdultA)[,"Gene Symbol"])
+rownames(eMatB) <- make.unique(fData(gseAdultB)[,"Gene Symbol"])
+rownames(eMatC) <- make.unique(fData(gseAdultC)[,"Gene Symbol"])
+```
+
+
+```{r}
+# Find common gene
+int_adult <- Reduce(intersect, list(rownames(eMatA), rownames(eMatB), rownames(eMatC)))
+head(int_adult)
+eMatA_common <- eMatA[int_adult,]
+eMatB_common <- eMatB[int_adult,]
+eMatC_common <- eMatC[int_adult,]
+
+# combine datasets
+combined_data <- cbind(eMatA_common, eMatB_common, eMatC_common)
+
+save(combined_data, file="combined_dataA.RData")
+
+batch <- c(rep("A", ncol(eMatA_common)), 
+           rep("B", ncol(eMatB_common)),
+           rep("C", ncol(eMatC_common)))
+
+merged_dataA <- ComBat(dat=combined_data, batch=batch)
+```
+
+```{r}
+#glimpse at the merged data
+head(merged_dataA)
+```
+
+
+```{r}
+#Merge outcome (rejection/stable)
+OutcomeA <- c(gseAdultA_raw$Outcome,gseAdultB_raw$Outcome,gseAdultC_raw$Outcome)
+```
+
+```{r}
+save(merged_dataA, file="merged_dataA.RData")
+save(OutcomeA, file="OutcomeA.RData")
+```
+
+
+## Pediatric
+```{r}
+# changing row names to gene symbol
+rownames(eMatPA) <- make.unique(fData(gsePA)[,"Gene Symbol"])
+rownames(eMatPB) <- make.unique(fData(gsePB)[,"Gene Symbol"])
+rownames(eMatPC) <- make.unique(fData(gsePC)[,"Gene Symbol"])
+```
+
+
+```{r}
+# Find common gene
+int_P <- Reduce(intersect, list(rownames(eMatPA), rownames(eMatPB), rownames(eMatPC)))
+head(int_P)
+eMatPA_common <- eMatPA[int_P,]
+eMatPB_common <- eMatPB[int_P,]
+eMatPC_common <- eMatPC[int_P,]
+
+# combine datasets
+combined_data <- cbind(eMatPA_common, eMatPB_common, eMatPC_common)
+
+batch <- c(rep("A", ncol(eMatPA_common)), 
+           rep("B", ncol(eMatPB_common)),
+           rep("C", ncol(eMatPC_common)))
+
+merged_dataP <- ComBat(dat=combined_data, batch=batch)
+```
+
+```{r}
+#glimpse at the merged data
+head(merged_dataP)
+```
+
+
+```{r}
+#Merge outcome (rejection/stable)
+OutcomeP <- c(gsePA_raw$Outcome,gsePB_raw$Outcome,gsePC_raw$Outcome)
+```
+
+
+
+# Modeling
+
+## Merged Dataset for Adult
+
+```{r}
+X_gse1c = t(merged_dataA)
+y_gse1c = OutcomeA
+```
+
+```{r}
+set.seed(3888)
+
+cvK = 5    # Number of CV folds
+n_sim = 20 # Number of repeats
+
+
+# SVM CV for gse1 (biopsy)
+
+cv_accuracy_gse1c = numeric(n_sim) # Vector to store averaged CV accuracies for SVM
+cv_accuracy_gse1c_rf = numeric(n_sim) # Vector to store averaged CV accuracies for Random Forest
+cv_accuracy_gse1c_nb = numeric(n_sim) # Vector to store averaged CV accuracies for Naive Bayes
+
+for (i in 1:n_sim) {
+  
+  cvSets = cvFolds(nrow(X_gse1c), cvK) # Folds object for cross-validation
+  cv_accuracy_folds = numeric(cvK) # Vector to store accuracy for each fold for SVM
+  cv_accuracy_folds_rf = numeric(cvK) # Vector to store accuracy for each fold for Random Forest
+  cv_accuracy_folds_nb = numeric(cvK) # Vector to store accuracy for each fold for Naive Bayes
+  
+  
+  for (j in 1:cvK) {
+    test_id = cvSets$subsets[cvSets$which == j]
+    X_train = X_gse1c[-test_id,]
+    X_test = X_gse1c[test_id,]
+    y_train = y_gse1c[-test_id]
+    y_test = y_gse1c[test_id]
+    
+    design <- model.matrix(~y_train)
+    fit <- lmFit(t(X_train), design)
+    fit <- eBayes(fit)
+    top <- suppressMessages(topTable(fit, n = 50))
+    DE_genes <- rownames(top)
+    
+    X_train = X_train[,DE_genes]
+    X_test = X_test[,DE_genes]
+    
+    # SVM model
+    svm_fit = svm(x = X_train, y = as.factor(y_train))
+    predictions = predict(svm_fit, X_test)
+    cv_accuracy_folds[j] = mean(y_test == predictions)
+    
+    # Random Forest model
+    rf_fit = randomForest(x = X_train, y = as.factor(y_train))
+    predictions_rf = predict(rf_fit, X_test)
+    cv_accuracy_folds_rf[j] = mean(y_test == predictions_rf)
+    
+    # Naive Bayes model
+    nb_fit = naiveBayes(x = X_train, y = as.factor(y_train))
+    predictions_nb = predict(nb_fit, X_test)
+    cv_accuracy_folds_nb[j] = mean(y_test == predictions_nb)
+  }
+  cv_accuracy_gse1c[i] = mean(cv_accuracy_folds)
+  cv_accuracy_gse1c_rf[i] = mean(cv_accuracy_folds_rf)
+  cv_accuracy_gse1c_nb[i] = mean(cv_accuracy_folds_nb)
+}
+```
+
+### Predict
+
+
+```{r}
+as.data.frame(merged_dataA[,1])
+write.csv(as.data.frame(merged_dataA[,1]), "patient_example_Adult.csv", row.names = TRUE)
+
+as.data.frame(merged_dataP[,1])
+write.csv(as.data.frame(merged_dataP[,1]), "patient_example_Pediatric.csv", row.names = TRUE)
+```
+
+
+```{r}
+X_gse1c <- t(merged_dataA)
+y_gse1c <- OutcomeA
+
+svm_fit <- svm(x = X_gse1c, y = as.factor(y_gse1c), probability = TRUE)
+
+patient_data <- t(data) 
+
+prediction <- predict(svm_fit, newdata = as.data.frame(patient_data), probability = TRUE)
+
+prediction
+```
+
+## Merged Dataset for Pediatric
+
+```{r}
+X_gse2c = t(merged_dataP)
+y_gse2c = OutcomeP
+```
+
+```{r}
+set.seed(3888)
+
+cvK = 5    # Number of CV folds
+n_sim = 20 # Number of repeats
+
+
+# SVM CV for gse2 (biopsy)
+
+cv_accuracy_gse2c = numeric(n_sim) # Vector to store averaged CV accuracies for SVM
+cv_accuracy_gse2c_rf = numeric(n_sim) # Vector to store averaged CV accuracies for Random Forest
+cv_accuracy_gse2c_nb = numeric(n_sim) # Vector to store averaged CV accuracies for Naive Bayes
+
+for (i in 1:n_sim) {
+  
+  cvSets = cvFolds(nrow(X_gse2c), cvK) # Folds object for cross-validation
+  cv_accuracy_folds2 = numeric(cvK) # Vector to store accuracy for each fold V
+  cv_accuracy_folds_rf2 = numeric(cvK) # Vector to store accuracy for each fold for Random Forest
+  cv_accuracy_folds_nb2 = numeric(cvK) # Vector to store accuracy for each fold for Naive Bayes
+  
+  
+  for (j in 1:cvK) {
+    test_id = cvSets$subsets[cvSets$which == j]
+    X_trainP = X_gse2c[-test_id,]
+    X_testP = X_gse2c[test_id,]
+    y_trainP = y_gse2c[-test_id]
+    y_testP = y_gse2c[test_id]
+    
+    designP <- model.matrix(~y_trainP)
+    fitP <- lmFit(t(X_trainP), designP)
+    fitP <- eBayes(fitP)
+    top_P <- suppressMessages(topTable(fitP, n = 50))
+    DE_genes_P <- rownames(top_P)
+    
+    X_trainP = X_trainP[,DE_genes_P]
+    X_testP = X_testP[,DE_genes_P]
+    
+    # SVM model
+    svm2_fit = svm(x = X_trainP, y = as.factor(y_trainP))
+    predictions2 = predict(svm2_fit, X_testP)
+    cv_accuracy_folds2[j] = mean(y_testP == predictions2)
+    
+    # Random Forest model
+    rf2_fit = randomForest(x = X_trainP, y = as.factor(y_trainP))
+    predictions_rf2 = predict(rf2_fit, X_testP)
+    cv_accuracy_folds_rf2[j] = mean(y_testP == predictions_rf2)
+    
+    # Naive Bayes model
+    nb2_fit = naiveBayes(x = X_trainP, y = as.factor(y_trainP))
+    predictions_nb2 = predict(nb2_fit, X_testP)
+    cv_accuracy_folds_nb2[j] = mean(y_testP == predictions_nb2)
+  }
+  cv_accuracy_gse2c[i] = mean(cv_accuracy_folds2)
+  cv_accuracy_gse2c_rf[i] = mean(cv_accuracy_folds_rf2)
+  cv_accuracy_gse2c_nb[i] = mean(cv_accuracy_folds_nb2)
+}
+```
+
+### Predict
+
+```{r}
+X_gse2c <- t(merged_dataP)
+y_gse2c <- OutcomeP
+
+svm_fit_P <- svm(x = X_gse2c, y = as.factor(y_gse2c), probability = TRUE)
+
+patient_dataP <- t(merged_dataP[,1]) 
+
+predictionP <- predict(svm_fit_P, newdata = as.data.frame(patient_dataP), probability = TRUE)
+predictionP
+
+
+ifelse(tolower(colnames(as.data.frame(attr(predictionP, "probabilities")))[1]) == "rejection", 1, 2)
+
+
+```
+
+```{r}
+# Find common gene
+int_adult <- Reduce(intersect, list(rownames(eMatA), rownames(eMatB)))
+head(int_adult)
+eMatA_common <- eMatA[int_adult,]
+eMatB_common <- eMatB[int_adult,]
+
+# combine datasets
+combined_data <- cbind(eMatA_common, eMatB_common)
+
+batch <- c(rep("A", ncol(eMatA_common)), 
+           rep("B", ncol(eMatB_common)))
+
+merged_db <- ComBat(dat=combined_data, batch=batch)
+```
+
+```{r}
+
+#db_pediatric <- as.data.frame(eMatPB_common)
+db_adult <- as.data.frame(merged_db)
+
+patient_data_A <- t(db_adult)
+prediction_A <- predict(svm_fit, newdata = as.data.frame(patient_data_A), probability = TRUE)
+predict_A <- as.data.frame(prediction_A)
+predict_prob_A <- as.data.frame(attr(prediction_A,"probabilities"))
+merged_predict_A <- cbind(predict_A, round(predict_prob_A*100, 2))
+merged_predict_A = subset(merged_predict_A, select = -Stable)
+merged_predict_A$Rejection <- paste0(format(merged_predict_A$Rejection, digits = 2), "%")
+
+
+
+# pediatric
+patient_data <- t(db_pediatric)
+prediction <- predict(svm_fit_P, newdata = as.data.frame(patient_data), probability = TRUE)
+
+predict_P <- as.data.frame(prediction)
+predict_prob <- as.data.frame(attr(prediction,"probabilities"))
+merged_predict_P <- cbind(predict_P, round(predict_prob*100, 2))
+merged_predict_P = subset(merged_predict_P, select = -Stable)
+
+predict_A 
+predict_P
+```
+
+
+## Plot
+
+```{r}
+plot_df = data.frame(accuracy = c(cv_accuracy_gse1c,
+                                  cv_accuracy_gse1c_rf,
+                                  cv_accuracy_gse1c_nb,
+                                  cv_accuracy_gse2c,
+                                  cv_accuracy_gse2c_rf,
+                                  cv_accuracy_gse2c_nb),
+                     model = c(rep("Adult-SVM", length(cv_accuracy_gse1c)),
+                               rep("Adult-RF", length(cv_accuracy_gse1c_rf)),
+                               rep("Adult-NB", length(cv_accuracy_gse1c_nb)),
+                               rep("Pediatric-SVM", length(cv_accuracy_gse2c)),
+                               rep("Pediatric-RF", length(cv_accuracy_gse2c_rf)),
+                               rep("Pediatric-NB", length(cv_accuracy_gse2c_nb))))
+                     
+
+ggplot(data = plot_df, aes(x = model, y = accuracy)) +
+  geom_boxplot() +
+  labs(x = "Model", y = "Mean 5-fold CV accuracy", title = "Distribution of mean 5-fold CV accuracies across\n50 repeats for models") +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        panel.border = element_rect(colour = "black", fill = NA, size = 1))
+```
+
+# Toptable
+
+```{r}
+
+load("merged_dataA.RData", verbose = TRUE)
+load("merged_dataP.RData", verbose = TRUE)
+load("OutcomeA.RData", verbose = TRUE)
+load("OutcomeP.RData", verbose = TRUE)
+
+traindataA <- as.data.frame(merged_dataA)
+designA <- model.matrix(~ OutcomeA, data = traindataA)
+fitA <- lmFit(traindataA, designA)
+fitA <- eBayes(fitA)
+topTableA <- suppressMessages(topTable(fitA, genelist = traindataA$gene, n = 5))
+DT::datatable(topTableA)
+
+
+traindataP <- as.data.frame(merged_dataP)
+designP <- model.matrix(~ OutcomeP, data = traindataP)
+fitP <- lmFit(traindataP, designP)
+fitP <- eBayes(fitP)
+topTableP <- suppressMessages(topTable(fitP, genelist = traindataP$gene, n = 5))
+DT::datatable(topTableP)
+rownames(topTableP)
+
+```
+
+```{r}
+#Adult
+genesA <- rownames(topTableA)[1:5]
+subset_dataA <- merged_dataA[genesA, ]
+
+dataA <- reshape2::melt(subset_dataA, varnames = c("Gene", "Sample"), value.name = "Expression")
+
+# Boxplot
+ggplot(dataA, aes(x = Gene, y = Expression)) +
+  geom_boxplot() +
+  labs(title = "Boxplot - Top 5 Genes in Aediatric Dataset",
+       x = "Genes",
+       y = "Expression") +
+  theme_minimal()
+
+#Pediatric
+genesP <- rownames(topTableP)[1:5]
+subset_dataP <- merged_dataP[genesP, ]
+
+dataP <- reshape2::melt(subset_dataP, varnames = c("Gene", "Sample"), value.name = "Expression")
+
+# Boxplot
+ggplot(dataP, aes(x = Gene, y = Expression)) +
+  geom_boxplot() +
+  labs(title = "Boxplot - Top 5 Genes in Pediatric Dataset",
+       x = "Genes",
+       y = "Expression") +
+  theme_minimal()
+```
+
+
+# Extra comments (Delete later)
+
+SVA Package
+merge exprs data
+
+make toptable after merge
+
+check assignment sample solution
