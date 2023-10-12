@@ -9,7 +9,7 @@ Our Kidney Transplant Risk Calculator offers a convenient solution for medical s
 In order to use our shiny app, you need to download the entire "Shiny" folder and run the "ui.R" file in the folder.
 
 ## Usage ##
-Basically, the user can upload csv file of a patient's gene expression data, and click the calculate button in order to get the results: risk score, outcome, and top 5 genes boxplot. The user can also see the database, statistics of database, comparison analysis between adult and pediatric patients.
+The user can upload csv file of a patient's gene expression data, and click the calculate button in order to get the results: risk score, outcome, and top 5 genes boxplot. The user can also see the database, statistics of database, comparison analysis between adult and pediatric patients.
 Further detailed instruction of usage are in the application.
 
 ## Report ##
